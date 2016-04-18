@@ -32,14 +32,13 @@ fn synchronize_phase(cache: &mut memory_cache::MemoryCache, timer: &mut chrono::
         }
     }
 
-    if cache.id == 0 {
-        let now = chrono::UTC::now();
-        println!("{}:\n\t{} ms\n\t{:.*} % cache miss\n", phase_name,
-                 (now - *timer).num_milliseconds(),
-                 3, cache.miss_percent());
-        cache.reset_stats();
-        mem::replace(timer, now);
-    }
+    let now = chrono::UTC::now();
+    println!("Cache {}: {}:\n\t{} ms\n\t{:.*} % cache miss\n",
+             cache.id, phase_name,
+             (now - *timer).num_milliseconds(),
+             3, cache.miss_percent());
+    cache.reset_stats();
+    mem::replace(timer, now);
 
     // Continue on to the next phase!
     cache.empty();
