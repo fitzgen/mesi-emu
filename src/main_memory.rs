@@ -115,6 +115,8 @@ impl MainMemory {
                 // Ignored.
                 bus::BusMessage::ReadResponse { who: _, from: _, block: _, data: _ } => { },
                 bus::BusMessage::ReadExclusiveResponse { who: _, block: _, data: _ } => { },
+                bus::BusMessage::InvalidateRequest { who: _, block: _ } => { },
+                bus::BusMessage::InvalidateResponse { who: _, ok: _ } => { },
             }
         }
     }

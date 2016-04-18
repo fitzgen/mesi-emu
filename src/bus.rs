@@ -61,6 +61,23 @@ pub enum BusMessage {
         /// The data to be written to the block.
         data: [u8; main_memory::BLOCK_SIZE],
     },
+
+    /// Request from one cache telling others to invalidate the given block if
+    /// they have it.
+    InvalidateRequest {
+        /// Which memory cache is requesting invalidation.
+        who: memory_cache::MemoryCacheId,
+        /// Which block should be invalidated.
+        block: main_memory::Block,
+    },
+
+    /// The response to a `InvalidateRequest`.
+    InvalidateResponse {
+        /// The memory cache this is a response to.
+        who: memory_cache::MemoryCacheId,
+        /// Whether or not the block was successfully invalidated.
+        ok: bool,
+    }
 }
 
 /// Who sent a response.

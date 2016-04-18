@@ -207,14 +207,35 @@ impl MemoryCache {
                 }
             },
 
+            bus::BusMessage::InvalidateRequest { who, block }
+            if who != self.id => {
+                let mut ok = true;
+
+                if let Some(cache_line) = self.cached_lines.get_mut(&block) {
+                    if cache_line.state == MesiState::Modified {
+                        ok = false;
+                        self.to_bus.send(bus::BusMessage::WriteRequest {
+                            block: block,
+                            data: cache_line.data,
+                        }).expect("Error sending to bus from memory cache");
+                    }
+
+                    cache_line.state = MesiState::Invalid;
+                }
+
+                self.to_bus.send(bus::BusMessage::InvalidateResponse {
+                    who: who,
+                    ok: ok,
+                }).expect("Error sending to bus from cache");
+            },
+
             // Handle responses to our own requests.
 
             bus::BusMessage::ReadResponse { who, from, block, data }
             if who == self.id && data.is_some() => {
                 if let Some(cached) = self.cached_lines.get_mut(&block) {
                     if cached.state != MesiState::Invalid {
-                        // We already got a response from a snooping cache.
-                        assert!(from == bus::ResponseSender::MainMemory);
+                        cached.state = MesiState::Shared;
                         return;
                     }
                 }
@@ -250,6 +271,7 @@ impl MemoryCache {
             },
 
             // Ignore our own requests.
+            bus::BusMessage::InvalidateRequest { who, block: _ } |
             bus::BusMessage::ReadRequest { who, block: _ } |
             bus::BusMessage::ReadExclusiveRequest { who, block: _ } => {
                 assert!(who == self.id);
@@ -260,6 +282,10 @@ impl MemoryCache {
             bus::BusMessage::ReadExclusiveResponse { who, block: _, data } => {
                 assert!(who != self.id || data.is_none());
             },
+
+            // Invalidation responses we care about are handled via a
+            // `snoop_until` call in `write`.
+            bus::BusMessage::InvalidateResponse { who: _, ok: _ } => { },
 
             // Ignore writes, they are only for main memory.
             bus::BusMessage::WriteRequest { block: _, data: _ } => { },
@@ -274,7 +300,7 @@ impl MemoryCache {
     }
 
     /// Keep snooping bus messages until `when` returns true.
-    fn snoop_until<F>(&mut self, when: F) where F: Fn(&bus::BusMessage) -> bool {
+    fn snoop_until<F>(&mut self, mut when: F) where F: FnMut(&bus::BusMessage) -> bool {
         loop {
             let msg = self.from_bus.recv().expect("Error receiving bus message");
 
@@ -328,6 +354,33 @@ impl MemoryCache {
         }
     }
 
+    fn try_invalidate(&mut self, block: main_memory::Block) -> Result<(), ()> {
+        self.to_bus.send(bus::BusMessage::InvalidateRequest {
+            who: self.id,
+            block: block,
+        }).expect("Error sending to bus from memory cache");
+
+        let self_id = self.id;
+        let mut responses_received = 0;
+        let mut invalidation_failed = false;
+        self.snoop_until(|msg| match *msg {
+            bus::BusMessage::InvalidateResponse { who, ok } if who == self_id => {
+                if !ok {
+                    invalidation_failed = true;
+                }
+                responses_received += 1;
+                responses_received == NUMBER_OF_CACHES
+            },
+            _ => false,
+        });
+
+        if invalidation_failed {
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+
     /// Write the `value` to the given address.
     pub fn write(&mut self, address: main_memory::Address, value: u8) {
         self.total_count += 1.0;
@@ -335,6 +388,7 @@ impl MemoryCache {
 
         let target_block = main_memory::Block::for_addr(address);
 
+        let mut should_try_invalidate = None;
         if let Some(cache_line) = self.cached_lines.get_mut(&target_block) {
             match cache_line.state {
                 MesiState::Modified | MesiState::Exclusive => {
@@ -343,22 +397,19 @@ impl MemoryCache {
                     return;
                 },
                 MesiState::Shared => {
-                    // TODO FITZGEN: actually invalidate everyone else's copy of
-                    // this cache line, verify that it invalidated alright, and
-                    // then continue as now. If invalidation fails, then we need
-                    // to consider that a cache miss and continue with the main
-                    // memory logic.
-
-                    self.to_bus.send(bus::BusMessage::ReadExclusiveRequest {
-                        who: self.id,
-                        block: target_block,
-                    }).expect("Error sending to bus from memory cache");
-
-                    cache_line.state = MesiState::Modified;
-                    cache_line.write_byte(address, value);
-                    return;
+                    should_try_invalidate = Some(cache_line.clone());
                 },
                 MesiState::Invalid => { },
+            }
+        }
+
+        if let Some(mut cache_line) = should_try_invalidate {
+            if let Ok(_) = self.try_invalidate(target_block) {
+                cache_line.state = MesiState::Modified;
+                cache_line.write_byte(address, value);
+                self.maybe_flush();
+                self.cached_lines.insert(target_block, cache_line);
+                return;
             }
         }
 
