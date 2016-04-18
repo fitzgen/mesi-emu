@@ -13,36 +13,62 @@ fn ignore<T>(_: T) { }
 /// The various types of messages we can send on the bus.
 #[derive(Clone, Copy, Debug)]
 pub enum BusMessage {
+    /// A request to read a block from main memory.
     ReadRequest {
+        /// Which memory cache is requesting the read.
         who: memory_cache::MemoryCacheId,
+        /// Which block of memory.
         block: main_memory::Block,
     },
+
+    /// The response to a `ReadRequest`.
     ReadResponse {
+        /// Which memory cache the response is for.
         who: memory_cache::MemoryCacheId,
+        /// Who sent the response.
         from: ResponseSender,
+        /// Which block of memory.
         block: main_memory::Block,
+        /// The block's data. If `None`, the data is unavailable due to another
+        /// cache holding it exclusively for writing.
         data: Option<[u8; main_memory::BLOCK_SIZE]>,
     },
 
+    /// A request to exclusively read a block from main memory, with intent to
+    /// modify and write it back.
     ReadExclusiveRequest {
+        /// Which memory cache is requesting the exclusive read.
         who: memory_cache::MemoryCacheId,
+        /// Which block of memory.
         block: main_memory::Block,
     },
+
+    /// The response to a `ReadExclusiveRequest`.
     ReadExclusiveResponse {
+        /// Which memory cache the response is for.
         who: memory_cache::MemoryCacheId,
+        /// Which block of memory.
         block: main_memory::Block,
+        /// The block's data. If `None`, the data is unavailable due to another
+        /// cache holding it exclusively for writing.
         data: Option<[u8; main_memory::BLOCK_SIZE]>,
     },
 
+    /// A request to write a block back to main memory.
     WriteRequest {
+        /// Which block of memory.
         block: main_memory::Block,
+        /// The data to be written to the block.
         data: [u8; main_memory::BLOCK_SIZE],
     },
 }
 
+/// Who sent a response.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ResponseSender {
+    /// The response was sent by a snooping memory cache.
     Cache,
+    /// The response was sent by main memory.
     MainMemory,
 }
 

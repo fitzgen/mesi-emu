@@ -10,7 +10,10 @@ use std::thread;
 use bus;
 use main_memory;
 
+/// The number of blocks a cache can hold.
 pub const CACHE_SIZE: usize = main_memory::BLOCK_SIZE;
+
+/// The number of caches to simulate.
 pub const NUMBER_OF_CACHES: usize = 8;
 
 /// The current MESI state of a cache line.
@@ -49,6 +52,7 @@ pub enum MesiState {
     Invalid,
 }
 
+/// The id of a memory cache.
 pub type MemoryCacheId = u8;
 
 /// A cache line is a block of data and its associated MESI state.
@@ -74,6 +78,7 @@ impl CacheLine {
 
 /// A memory cache.
 pub struct MemoryCache {
+    /// This cache's unique id.
     pub id: MemoryCacheId,
     miss_count: f64,
     total_count: f64,

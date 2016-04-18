@@ -8,20 +8,27 @@ use std::thread;
 
 use bus;
 
+/// The size of a block of memory, in bytes.
 pub const BLOCK_SIZE: usize = 32;
+
+/// The size of main memory, in bytes.
 pub const MAIN_MEMORY_SIZE: usize = 65536;
 
+/// The address of a byte in memory.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Address(pub usize);
 
+/// The index of a contiguous block of bytes in memory or cache.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Block(pub usize);
 
 impl Block {
+    /// Get the block for the given address.
     pub fn for_addr(addr: Address) -> Block {
         Block(addr.0 / BLOCK_SIZE)
     }
 
+    /// Get the range of addresses for this block.
     pub fn address_range(&self) -> ops::Range<usize> {
         ops::Range {
             start: self.0 * BLOCK_SIZE,

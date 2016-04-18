@@ -1,4 +1,7 @@
-#[deny(missing_docs)]
+#![deny(missing_docs)]
+
+//! Emulator for memory caches, main memory, a bus connecting them all, and the
+//! MESI cache coherence protocol.
 
 use std::sync::mpsc;
 
