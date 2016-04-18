@@ -77,6 +77,7 @@ impl MainMemory {
 
                     self.to_bus.send(bus::BusMessage::ReadResponse {
                         who: who,
+                        from: bus::ResponseSender::MainMemory,
                         block: block,
                         data: data,
                     }).expect("Error sending to bus from main memory");
@@ -105,7 +106,7 @@ impl MainMemory {
                 },
 
                 // Ignored.
-                bus::BusMessage::ReadResponse { who: _, block: _, data: _ } => { },
+                bus::BusMessage::ReadResponse { who: _, from: _, block: _, data: _ } => { },
                 bus::BusMessage::ReadExclusiveResponse { who: _, block: _, data: _ } => { },
             }
         }

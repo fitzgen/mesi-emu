@@ -19,6 +19,7 @@ pub enum BusMessage {
     },
     ReadResponse {
         who: memory_cache::MemoryCacheId,
+        from: ResponseSender,
         block: main_memory::Block,
         data: Option<[u8; main_memory::BLOCK_SIZE]>,
     },
@@ -37,6 +38,12 @@ pub enum BusMessage {
         block: main_memory::Block,
         data: [u8; main_memory::BLOCK_SIZE],
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ResponseSender {
+    Cache,
+    MainMemory,
 }
 
 /// The bus that connects the memory caches to main memory and each other.

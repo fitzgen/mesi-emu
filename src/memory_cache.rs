@@ -161,10 +161,9 @@ impl MemoryCache {
                     cache_line.state = match cache_line.state {
                         MesiState::Invalid => MesiState::Invalid,
                         MesiState::Exclusive | MesiState::Shared => {
-                            // TODO FITZGEN: need to tell receiver that this
-                            // is shared...
                             self.to_bus.send(bus::BusMessage::ReadResponse {
                                 who: who,
+                                from: bus::ResponseSender::Cache,
                                 block: block,
                                 data: Some(cache_line.data),
                             }).expect("Error sending to bus from memory cache");
@@ -176,10 +175,9 @@ impl MemoryCache {
                                 data: cache_line.data,
                             }).expect("Error sending to bus from memory cache");
 
-                            // TODO FITZGEN: need to tell receiver that this
-                            // is shared...
                             self.to_bus.send(bus::BusMessage::ReadResponse {
                                 who: who,
+                                from: bus::ResponseSender::Cache,
                                 block: block,
                                 data: Some(cache_line.data),
                             }).expect("Error sending to bus from memory cache");
@@ -206,11 +204,22 @@ impl MemoryCache {
 
             // Handle responses to our own requests.
 
-            bus::BusMessage::ReadResponse { who, block, data }
+            bus::BusMessage::ReadResponse { who, from, block, data }
             if who == self.id && data.is_some() => {
+                if let Some(cached) = self.cached_lines.get_mut(&block) {
+                    if cached.state != MesiState::Invalid {
+                        // We already got a response from a snooping cache.
+                        assert!(from == bus::ResponseSender::MainMemory);
+                        return;
+                    }
+                }
+
                 self.maybe_flush();
                 self.cached_lines.insert(block, Box::new(CacheLine {
-                    state: MesiState::Exclusive,
+                    state: match from {
+                        bus::ResponseSender::MainMemory => MesiState::Exclusive,
+                        bus::ResponseSender::Cache => MesiState::Shared,
+                    },
                     data: data.unwrap(),
                 }));
             },
@@ -226,7 +235,7 @@ impl MemoryCache {
 
             // Snoop when other caches start reading cache lines that we have
             // marked exclusive and set our local copy's state to shared.
-            bus::BusMessage::ReadResponse { who, block, data }
+            bus::BusMessage::ReadResponse { who, from: _, block, data }
             if who != self.id && data.is_some() => {
                 if let Some(cache_line) = self.cached_lines.get_mut(&block) {
                     if cache_line.state == MesiState::Exclusive {
@@ -242,7 +251,7 @@ impl MemoryCache {
             },
 
             // Ignore responses that aren't meant for us.
-            bus::BusMessage::ReadResponse { who, block: _, data } |
+            bus::BusMessage::ReadResponse { who, from: _, block: _, data } |
             bus::BusMessage::ReadExclusiveResponse { who, block: _, data } => {
                 assert!(who != self.id || data.is_none());
             },
@@ -295,7 +304,7 @@ impl MemoryCache {
 
             let self_id = self.id;
             self.snoop_until(|msg| match *msg {
-                bus::BusMessage::ReadResponse { who, block, data: _ } => {
+                bus::BusMessage::ReadResponse { who, from: _, block, data: _ } => {
                     who == self_id && block == target_block
                 },
                 _ => false
