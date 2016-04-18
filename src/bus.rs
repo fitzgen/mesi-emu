@@ -1,3 +1,6 @@
+//! The bus connects each memory cache to each other and main memory. It
+//! forwards messages sent from one of these actors to all the others.
+
 use std::sync::mpsc;
 use std::thread;
 
@@ -36,13 +39,14 @@ pub enum BusMessage {
     },
 }
 
-/// The bus that connects the memory caches to main memory.
+/// The bus that connects the memory caches to main memory and each other.
 pub struct Bus {
     incoming: mpsc::Receiver<BusMessage>,
     outgoing: Vec<mpsc::Sender<BusMessage>>,
 }
 
 impl Bus {
+    /// Create the bus, in its own thread.
     pub fn spawn(incoming: mpsc::Receiver<BusMessage>, outgoing: Vec<mpsc::Sender<BusMessage>>)
     {
         let bus = Bus {
@@ -53,6 +57,8 @@ impl Bus {
         thread::spawn(move || bus.run());
     }
 
+    /// Run the bus' main loop, which forwards messages to each memory cache and
+    /// main memory.
     pub fn run(mut self) {
         for msg in self.incoming {
             for out in &mut self.outgoing {

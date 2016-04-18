@@ -1,3 +1,5 @@
+#[deny(missing_docs)]
+
 use std::sync::mpsc;
 
 pub mod benchmark;
@@ -5,6 +7,8 @@ pub mod bus;
 pub mod main_memory;
 pub mod memory_cache;
 
+/// Spawn main memory and caches, tie them together with the bus, and then run
+/// the benchmark.
 pub fn main() {
     let (to_bus, from_bus) = mpsc::channel();
 

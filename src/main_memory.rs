@@ -1,3 +1,5 @@
+//! Main memory implementation.
+
 extern crate bit_vec;
 
 use std::ops;
@@ -55,6 +57,8 @@ impl MainMemory {
         send
     }
 
+    /// Run the main loop of the main memory thread. Serves up responses to
+    /// requests to read and write memory.
     pub fn run(mut self) {
         for msg in self.from_bus {
             // Simulate how main memory is an order of magnitude slower than

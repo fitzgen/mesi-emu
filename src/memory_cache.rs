@@ -1,3 +1,5 @@
+//! Memory cache implementation.
+
 extern crate lru_time_cache;
 use self::lru_time_cache::LruCache;
 
@@ -106,23 +108,27 @@ impl MemoryCache {
         (send, handle.expect("Error spawning thread"))
     }
 
-    /// TODO FITZGEN
+    /// Return the percent of reads and writes that have missed the cache.
     pub fn miss_percent(&self) -> f64 {
         assert!(self.miss_count <= self.total_count);
         (self.miss_count / self.total_count) * 100.0
     }
 
-    /// TODO FITZGEN
+    /// Reset the statistics recording miss percents.
     pub fn reset_stats(&mut self) {
         self.miss_count = 0.0;
         self.total_count = 0.0;
     }
 
+    /// Empty the cache and write back any modified cache lines that might be
+    /// stored.
     pub fn empty(&mut self) {
+        self.flush();
         mem::replace(&mut self.cached_lines, LruCache::with_capacity(CACHE_SIZE));
     }
 
-    /// TODO FITZGEN
+    /// Flush the cache. Writes each `MesiState::Modified` cache line back to
+    /// main memory.
     pub fn flush(&mut self) {
         let modified = self.cached_lines.retrieve_all().into_iter()
             .filter(|&(_, ref c)| c.state == MesiState::Modified);
@@ -137,7 +143,8 @@ impl MemoryCache {
         }
     }
 
-    /// TODO FITZGEN
+    /// Flush the cache if adding a new cache line would drop another cache line
+    /// from the cache.
     fn maybe_flush(&mut self) {
         if self.cached_lines.len() == CACHE_SIZE {
             self.flush();
@@ -217,7 +224,8 @@ impl MemoryCache {
                 }));
             },
 
-            // TODO FITZGEN
+            // Snoop when other caches start reading cache lines that we have
+            // marked exclusive and set our local copy's state to shared.
             bus::BusMessage::ReadResponse { who, block, data }
             if who != self.id && data.is_some() => {
                 if let Some(cache_line) = self.cached_lines.get_mut(&block) {
@@ -244,14 +252,14 @@ impl MemoryCache {
         }
     }
 
-    /// TODO FITZGEN
+    /// Handle the backlog of unprocessed bus messages.
     fn snoop_backlog(&mut self) {
         while let Ok(msg) = self.from_bus.try_recv() {
             self.handle_bus_message(&msg);
         }
     }
 
-    /// TODO FITZGEN
+    /// Keep snooping bus messages until `when` returns true.
     fn snoop_until<F>(&mut self, when: F) where F: Fn(&bus::BusMessage) -> bool {
         loop {
             let msg = self.from_bus.recv().expect("Error receiving bus message");
@@ -264,7 +272,7 @@ impl MemoryCache {
         }
     }
 
-    /// TODO FITZGEN
+    /// Read the byte at the given address.
     pub fn read(&mut self, addr: main_memory::Address) -> u8 {
         self.total_count += 1.0;
         self.snoop_backlog();
@@ -306,7 +314,7 @@ impl MemoryCache {
         }
     }
 
-    /// TODO FITZGEN
+    /// Write the `value` to the given address.
     pub fn write(&mut self, address: main_memory::Address, value: u8) {
         self.total_count += 1.0;
         self.snoop_backlog();
@@ -321,6 +329,12 @@ impl MemoryCache {
                     return;
                 },
                 MesiState::Shared => {
+                    // TODO FITZGEN: actually invalidate everyone else's copy of
+                    // this cache line, verify that it invalidated alright, and
+                    // then continue as now. If invalidation fails, then we need
+                    // to consider that a cache miss and continue with the main
+                    // memory logic.
+
                     self.to_bus.send(bus::BusMessage::ReadExclusiveRequest {
                         who: self.id,
                         block: target_block,
